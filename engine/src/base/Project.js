@@ -1615,7 +1615,7 @@ Wick.Project = class extends Wick.Base {
 
         this.stopAllSounds();
 
-        cancelAnimationFrame(this._tickIntervalID);
+        cancelAnimationFrame(this._rafID);
         this._tickIntervalID = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
