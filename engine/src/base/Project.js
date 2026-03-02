@@ -17,6 +17,17 @@
  * along with Wick Engine.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// Compatibility shims for environments that may lack RAF or high-resolution timers.
+var _raf = (typeof requestAnimationFrame === 'function')
+    ? requestAnimationFrame.bind(globalThis)
+    : function(cb) { return setTimeout(cb, 1000 / 60); };
+var _craf = (typeof cancelAnimationFrame === 'function')
+    ? cancelAnimationFrame.bind(globalThis)
+    : clearTimeout;
+var _perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now.bind(performance)
+    : Date.now.bind(Date);
+
 /**
  * Class representing a Wick Project.
  */
@@ -70,9 +81,17 @@ Wick.Project = class extends Wick.Base {
         this._keysLastDown = [];
         this._currentKey = null;
 
-        this._rafID = null;
+        this._tickRafId = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
+
+        // Backwards compatibility: external code may reference _tickIntervalID.
+        Object.defineProperty(this, '_tickIntervalID', {
+            get: function () { return this._tickRafId; },
+            set: function (value) { this._tickRafId = value; },
+            enumerable: true,
+            configurable: true,
+        });
 
         this._hideCursor = false;
         this._muted = false;
@@ -1485,12 +1504,12 @@ Wick.Project = class extends Wick.Base {
 
         window._scriptOnErrorCallback = args.onError;
 
-        this._playing = true;
-        this.view.paper.view.autoUpdate = false;
-
-        if (this._tickIntervalID) {
+        if (this._tickRafId) {
             this.stop();
         }
+
+        this._playing = true;
+        this.view.paper.view.autoUpdate = false;
 
         this.error = null;
 
@@ -1499,7 +1518,7 @@ Wick.Project = class extends Wick.Base {
         this.selection.clear();
 
         this._tickAccumulator = 0;
-        this._lastTickTimestamp = performance.now();
+        this._lastTickTimestamp = _perfNow();
 
         const frameDuration = 1000 / this.framerate;
         const maxCatchUpSteps = 5;
@@ -1507,6 +1526,10 @@ Wick.Project = class extends Wick.Base {
         const runPlaybackFrame = (timestamp) => {
             if (!this._playing) {
                 return;
+            }
+
+            if (timestamp === undefined) {
+                timestamp = _perfNow();
             }
 
             var deltaTime = timestamp - this._lastTickTimestamp;
@@ -1553,10 +1576,10 @@ Wick.Project = class extends Wick.Base {
                 return;
             }
 
-            this._rafID = requestAnimationFrame(runPlaybackFrame);
+            this._tickRafId = _raf(runPlaybackFrame);
         };
 
-        this._rafID = requestAnimationFrame(runPlaybackFrame);
+        this._tickRafId = _raf(runPlaybackFrame);
     }
 
     /**
@@ -1615,8 +1638,8 @@ Wick.Project = class extends Wick.Base {
 
         this.stopAllSounds();
 
-        cancelAnimationFrame(this._rafID);
-        this._tickIntervalID = null;
+        _craf(this._tickRafId);
+        this._tickRafId = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
 
