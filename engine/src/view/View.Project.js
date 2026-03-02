@@ -424,6 +424,19 @@ Wick.View.Project = class extends Wick.View {
 
         // Generate frame layers
         if (this._dirtyFlags.timelineContent || this._dirtyFlags.onionSkinOverlays) {
+            // Remove stale frame layers (layers that are not persistent) before rebuilding
+            var persistentLayerSet = new Set([
+                this._svgBackgroundLayer,
+                this.model.selection.view.layer,
+                this._svgGUILayer,
+                this._svgBordersLayer,
+            ]);
+            var projectLayers = this.paper.project.layers;
+            for (var i = projectLayers.length - 1; i >= 0; i--) {
+                if (!persistentLayerSet.has(projectLayers[i])) {
+                    projectLayers[i].remove();
+                }
+            }
             this.model.focus.timeline.view.render();
         }
 
@@ -460,7 +473,7 @@ Wick.View.Project = class extends Wick.View {
         nextLayerIndex += 1;
 
         // Render black bars (for published projects)
-        if((this._dirtyFlags.transform || this._dirtyFlags.timelineContent || this._dirtyFlags.background) &&
+        if((this._dirtyFlags.transform || this._dirtyFlags.timelineContent || this._dirtyFlags.background || this._dirtyFlags.guiOverlays) &&
             this.model.isPublished && this.model.renderBlackBars) {
             this._svgBordersLayer.removeChildren();
             this._svgBordersLayer.addChildren(this._generateSVGBorders());
@@ -512,6 +525,10 @@ Wick.View.Project = class extends Wick.View {
             showClipBorders: this.model.showClipBorders,
             isPublished: this.model.isPublished,
             renderBlackBars: this.model.renderBlackBars,
+            playing: this.model.playing,
+            onionSkinEnabled: this.model.onionSkinEnabled,
+            onionSkinSeekForwards: this.model.onionSkinSeekForwards,
+            onionSkinSeekBackwards: this.model.onionSkinSeekBackwards,
         };
     }
 
@@ -555,12 +572,19 @@ Wick.View.Project = class extends Wick.View {
         }
 
         if (state.showClipBorders !== this._lastRenderState.showClipBorders ||
-            state.isPublished !== this._lastRenderState.isPublished) {
+            state.isPublished !== this._lastRenderState.isPublished ||
+            state.playing !== this._lastRenderState.playing) {
             this._dirtyFlags.guiOverlays = true;
         }
 
         if (state.renderBlackBars !== this._lastRenderState.renderBlackBars) {
             this._dirtyFlags.background = true;
+        }
+
+        if (state.onionSkinEnabled !== this._lastRenderState.onionSkinEnabled ||
+            state.onionSkinSeekForwards !== this._lastRenderState.onionSkinSeekForwards ||
+            state.onionSkinSeekBackwards !== this._lastRenderState.onionSkinSeekBackwards) {
+            this._dirtyFlags.onionSkinOverlays = true;
         }
 
         if (!options.transformOnly) {
