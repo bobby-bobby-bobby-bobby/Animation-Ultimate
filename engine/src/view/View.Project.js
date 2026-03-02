@@ -70,6 +70,12 @@ Wick.View.Project = class extends Wick.View {
         this._svgBackgroundLayer = null;
         this._svgBordersLayer = null;
         this._svgGUILayer = null;
+        this._frameLayers = [];
+
+        this.needsFrameRender = true;
+        this.needsSelectionRender = true;
+        this.needsGuiRender = true;
+        this.needsBackgroundRender = true;
 
         this._pan = { x: 0, y: 0 };
         this._zoom = 1;
@@ -174,14 +180,15 @@ Wick.View.Project = class extends Wick.View {
     /**
      * Render the view.
      */
-    render() {
+    render(forceFullRender) {
+        forceFullRender = !!forceFullRender;
         this.zoom = this.model.zoom;
         this.pan = this.model.pan;
 
         this._buildSVGCanvas();
         this._displayCanvasInContainer(this._svgCanvas);
         this.resize();
-        this._renderSVGCanvas();
+        this._renderSVGCanvas(forceFullRender);
         this._updateCanvasContainerBGColor();
     }
 
@@ -263,10 +270,17 @@ Wick.View.Project = class extends Wick.View {
             var tool = this.model.tools[toolName];
             tool.project = this.model;
             tool.on('canvasModified', (e, actionName) => {
+                // Tool edits can change timeline artwork, selection bounds, and clip border overlays.
+                this.invalidateFrameRender();
+                this.invalidateSelectionRender();
+                this.invalidateGuiRender();
                 this.applyChanges();
                 this.fireEvent('canvasModified', e, actionName);
             });
             tool.on('canvasViewTransformed', (e) => {
+                // Pan/zoom changes affect overlays that are zoom-aware (crosshair, borders, clip borders).
+                this.invalidateBackgroundRender();
+                this.invalidateGuiRender();
                 this._applyZoomAndPanChangesFromPaper();
                 this.fireEvent('canvasModified', e, `viewTransform-${toolName}`);
             });
@@ -328,8 +342,41 @@ Wick.View.Project = class extends Wick.View {
         this.paper.project.clear();
     }
 
-    _renderSVGCanvas() {
-        this.paper.project.clear();
+    invalidateFrameRender() {
+        this.needsFrameRender = true;
+        this.needsSelectionRender = true;
+        this.needsGuiRender = true;
+    }
+
+    invalidateSelectionRender() {
+        this.needsSelectionRender = true;
+        this.needsGuiRender = true;
+    }
+
+    invalidateGuiRender() {
+        this.needsGuiRender = true;
+    }
+
+    invalidateBackgroundRender() {
+        this.needsBackgroundRender = true;
+        this.needsGuiRender = true;
+    }
+
+    _resetRenderFlags() {
+        this.needsFrameRender = false;
+        this.needsSelectionRender = false;
+        this.needsGuiRender = false;
+        this.needsBackgroundRender = false;
+    }
+
+    _renderSVGCanvas(forceFullRender) {
+        if (forceFullRender) {
+            this.paper.project.clear();
+            this.needsFrameRender = true;
+            this.needsSelectionRender = true;
+            this.needsGuiRender = true;
+            this.needsBackgroundRender = true;
+        }
 
         // Lazily setup tools
         if (!this._toolsSetup) {
@@ -360,52 +407,65 @@ Wick.View.Project = class extends Wick.View {
         this.paper.view.center = new paper.Point(-pan.x, -pan.y);
         this.paper.view.rotation = this.model.rotation;
 
-        // Generate background layer
-        this._svgBackgroundLayer.removeChildren();
-        this._svgBackgroundLayer.locked = true;
+        // Generate background layer only when timeline focus/zoom state changes.
+        if (this.needsBackgroundRender) {
+            this._svgBackgroundLayer.removeChildren();
+            this._svgBackgroundLayer.locked = true;
+
+            if (this.model.focus.isRoot) {
+                // We're in the root timeline, render the canvas normally
+                var stage = this._generateSVGCanvasStage();
+                this._svgBackgroundLayer.addChild(stage);
+            } else {
+                // We're inside a clip, don't render the canvas BG, instead render a crosshair at (0,0)
+                var originCrosshair = this._generateSVGOriginCrosshair();
+                this._svgBackgroundLayer.addChild(originCrosshair);
+            }
+        }
         this.paper.project.addLayer(this._svgBackgroundLayer);
 
-        if (this.model.focus.isRoot) {
-            // We're in the root timeline, render the canvas normally
-            var stage = this._generateSVGCanvasStage();
-            this._svgBackgroundLayer.addChild(stage);
-        } else {
-            // We're inside a clip, don't render the canvas BG, instead render a crosshair at (0,0)
-            var originCrosshair = this._generateSVGOriginCrosshair();
-            this._svgBackgroundLayer.addChild(originCrosshair);
-        }
-
         // Generate frame layers
-        this.model.focus.timeline.view.render();
-        this.model.focus.timeline.view.frameLayers.forEach(layer => {
+        if (this.needsFrameRender) {
+            this.model.focus.timeline.view.render();
+            this._frameLayers = this.model.focus.timeline.view.frameLayers;
+            this.model.focus.timeline.view.frameLayers.forEach(layer => {
+                if (this.model.project &&
+                    this.model.project.activeFrame &&
+                    !layer.locked &&
+                    (layer.data.wickType === 'paths' || layer.data.wickType === 'clipsandpaths') &&
+                    layer.data.wickUUID === this.model.project.activeFrame.uuid) {
+                    layer.activate();
+                }
+            });
+        }
+        this._frameLayers.forEach(layer => {
             this.paper.project.addLayer(layer);
-            if (this.model.project &&
-                this.model.project.activeFrame &&
-                !layer.locked &&
-                (layer.data.wickType === 'paths' || layer.data.wickType === 'clipsandpaths') &&
-                layer.data.wickUUID === this.model.project.activeFrame.uuid) {
-                layer.activate();
-            }
         });
 
         // Render selection
-        this.model.selection.view.render();
+        if (this.needsSelectionRender) {
+            this.model.selection.view.render();
+        }
         this.paper.project.addLayer(this.model.selection.view.layer);
 
         // Render GUI Layer
-        this._svgGUILayer.removeChildren();
-        this._svgGUILayer.locked = true;
-        if(this.model.showClipBorders && !this.model.playing && !this.model.isPublished) {
-            this._svgGUILayer.addChildren(this._generateClipBorders());
-            this.paper.project.addLayer(this._svgGUILayer);
+        if (this.needsGuiRender) {
+            this._svgGUILayer.removeChildren();
+            this._svgGUILayer.locked = true;
+            if(this.model.showClipBorders && !this.model.playing && !this.model.isPublished) {
+                this._svgGUILayer.addChildren(this._generateClipBorders());
+            }
         }
+        this.paper.project.addLayer(this._svgGUILayer);
 
         // Render black bars (for published projects)
-        if(this.model.isPublished && this.model.renderBlackBars) {
+        if(this.model.isPublished && this.model.renderBlackBars && (this.needsBackgroundRender || this.needsGuiRender)) {
             this._svgBordersLayer.removeChildren();
             this._svgBordersLayer.addChildren(this._generateSVGBorders());
-            this.paper.project.addLayer(this._svgBordersLayer);
         }
+        this.paper.project.addLayer(this._svgBordersLayer);
+
+        this._resetRenderFlags();
     }
 
     _generateSVGCanvasStage() {

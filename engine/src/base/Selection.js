@@ -161,6 +161,7 @@ Wick.Selection = class extends Wick.Base {
 
         // Make sure the view gets updated the next time its needed...
         this.view.dirty = true;
+        this._markProjectViewSelectionDirty();
     }
 
     /**
@@ -189,6 +190,7 @@ Wick.Selection = class extends Wick.Base {
 
         this._resetPositioningValues();
         this.view.dirty = true;
+        this._markProjectViewSelectionDirty();
     }
 
     /**
@@ -204,6 +206,7 @@ Wick.Selection = class extends Wick.Base {
 
         // Make sure the view gets updated the next time its needed...
         this.view.dirty = true;
+        this._markProjectViewSelectionDirty();
     }
 
     /**
@@ -219,6 +222,7 @@ Wick.Selection = class extends Wick.Base {
 
         this._resetPositioningValues();
         this.view.dirty = true;
+        this._markProjectViewSelectionDirty();
     }
 
     /**
@@ -230,8 +234,17 @@ Wick.Selection = class extends Wick.Base {
             this._selectedObjectsUUIDs = [];
             this._resetPositioningValues();
             this.view.dirty = true;
+            this._markProjectViewSelectionDirty();
         } else {
             this.deselectMultipleObjects(this.project.selection.getSelectedObjects(filter));
+        }
+    }
+
+
+    _markProjectViewSelectionDirty() {
+        if (this.project && this.project.view) {
+            // Selection mutations only require re-rendering selection/widget overlays.
+            this.project.view.invalidateSelectionRender();
         }
     }
 
