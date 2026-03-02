@@ -33,6 +33,7 @@ Wick.Layer = class extends Wick.Base {
         this.locked = args.locked === undefined ? false : args.locked;
         this.hidden = args.hidden === undefined ? false : args.hidden;
         this.name = args.name || null;
+        this._frameVersion = 0;
     }
 
     _serialize (args) {
@@ -109,6 +110,17 @@ Wick.Layer = class extends Wick.Base {
         return this.getFrameAtPlayheadPosition(this.parent.playheadPosition);
     }
 
+    get frameVersion () {
+        return this._frameVersion;
+    }
+
+    _incrementFrameVersion () {
+        this._frameVersion++;
+        if (this.parentTimeline) {
+            this.parentTimeline.invalidateActiveFramesCache();
+        }
+    }
+
     /**
      * Moves this layer to a different position, inserting it before/after other layers if needed.
      * @param {number} index - the new position to move the layer to.
@@ -129,6 +141,8 @@ Wick.Layer = class extends Wick.Base {
      * @param {Wick.Frame} frame - The frame to add to the Layer.
      */
     addFrame (frame) {
+        // Invalidate timeline active-frame cache when frame ranges are added.
+        this._incrementFrameVersion();
         this.addChild(frame);
         this.resolveOverlap([frame]);
         this.resolveGaps([frame]);
@@ -153,6 +167,8 @@ Wick.Layer = class extends Wick.Base {
             throw new Error('insertBlankFrame: playheadPosition is required');
         }
 
+        // Invalidate timeline active-frame cache when frame ranges are added.
+        this._incrementFrameVersion();
         var frame = new Wick.Frame({start: playheadPosition});
         this.addChild(frame);
 
@@ -174,6 +190,8 @@ Wick.Layer = class extends Wick.Base {
      * @param  {Wick.Frame} frame Frame to remove.
      */
     removeFrame (frame) {
+        // Invalidate timeline active-frame cache when frame ranges are removed.
+        this._incrementFrameVersion();
         this.removeChild(frame);
         this.resolveGaps();
     }
@@ -218,6 +236,8 @@ Wick.Layer = class extends Wick.Base {
      * @param {Wick.Frame[]} newOrModifiedFrames - the frames that should take precedence when determining which frames should get "eaten".
      */
     resolveOverlap (newOrModifiedFrames) {
+        // Split/extend operations happen here by mutating frame start/end values.
+        this._incrementFrameVersion();
         newOrModifiedFrames = newOrModifiedFrames || [];
 
         // Ensure that frames never go beyond the beginning of the timeline
@@ -262,6 +282,9 @@ Wick.Layer = class extends Wick.Base {
      */
     resolveGaps (newOrModifiedFrames) {
         if(this.parentTimeline && this.parentTimeline.waitToFillFrameGaps) return;
+
+        // Split/extend operations happen here when frames are auto-extended or blank frames added.
+        this._incrementFrameVersion();
 
         newOrModifiedFrames = newOrModifiedFrames || [];
 
