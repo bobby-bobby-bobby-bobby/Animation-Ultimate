@@ -174,6 +174,13 @@ class Editor extends EditorCore {
       multiple: true,
     });
 
+    // Image-sequence specific file input
+    this.openAssetSequenceFileFromClient = window.createFileInput({
+      accept: '.zip, .png, .jpg, .jpeg, .gif, .webp, .svg',
+      onChange: this.handleAssetFileImport,
+      multiple: true,
+    });
+
     // Set up color picker
     this.maxLastColors = 8;
     this._onEyedropperPickedColor = (color) => {};
@@ -873,6 +880,10 @@ class Editor extends EditorCore {
     this.openAssetFileFromClient();
   }
 
+  openImportAssetSequenceFileDialog = () => {
+    this.openAssetSequenceFileFromClient();
+  }
+
   /**
    * Returns the appropriate keymap based on the state of the editor.
    * @param fullKeyMap {Bool} If true, returns the full keymap for the editor. Otherwise, the appropriate keymap is returned.
@@ -1108,6 +1119,7 @@ class Editor extends EditorCore {
                           assets={this.project.getAssets()}
                           openModal={this.openModal}
                           openImportAssetFileDialog={this.openImportAssetFileDialog}
+                          openImportAssetSequenceFileDialog={this.openImportAssetSequenceFileDialog}
                           selectObjects={this.selectObjects}
                           clearSelection={this.clearSelection}
                           isObjectSelected={this.isObjectSelected}
@@ -1211,6 +1223,7 @@ class Editor extends EditorCore {
                         assets={this.project.getAssets()}
                         openModal={this.openModal}
                         openImportAssetFileDialog={this.openImportAssetFileDialog}
+                        openImportAssetSequenceFileDialog={this.openImportAssetSequenceFileDialog}
                         selectObjects={this.selectObjects}
                         clearSelection={this.clearSelection}
                         isObjectSelected={this.isObjectSelected}

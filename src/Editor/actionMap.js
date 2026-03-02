@@ -176,6 +176,12 @@ class ActionMapInterface extends Object {
         id: 'action-create-instance-of-selected-asset',
         color: 'active-blue'
       },
+      importImageSequence: {
+        icon: 'upload',
+        tooltip: 'Import Image Sequence',
+        action: this.editor.openImportAssetSequenceFileDialog,
+        id: 'action-import-image-sequence',
+      },
     }
   }
 }
