@@ -929,16 +929,56 @@ class EditorCore extends Component {
     // Add all successfully uploaded assets
     for(var i = 0; i < acceptedFiles.length; i++) {
       if(acceptedFiles[i].type === 'image/gif') {
+        let gifImportCancelled = false;
+        let gifImportToastID = this.toast(`Importing ${acceptedFiles[i].name}...`, 'info', { autoClose: false });
         GIFImport.importGIFIntoProject({
             gifFile: acceptedFiles[i],
             project: this.project,
-            onProgress: (percent) => {
-                console.log('GIFImport onProgress: ' + percent);
+            onRegisterCancel: (cancelFn) => {
+              this.openWarningModal({
+                title: "Importing GIF",
+                description: `Importing ${acceptedFiles[i].name}.`,
+                acceptText: "Hide",
+                acceptIcon: "check",
+                acceptAction: () => {},
+                cancelText: "Cancel",
+                cancelIcon: "cancel-white",
+                cancelAction: () => {
+                  gifImportCancelled = true;
+                  cancelFn();
+                },
+              });
+            },
+            onProgress: (message, percent) => {
+                if (gifImportCancelled) return;
+                if (percent !== null && percent !== undefined) {
+                  this.updateToast(gifImportToastID, {
+                    type: 'info',
+                    text: `${message} (${Math.round(percent * 100)}%)`,
+                    autoClose: false,
+                  });
+                }
+            },
+            onCancel: () => {
+              this.updateToast(gifImportToastID, {
+                type: 'warning',
+                text: `Cancelled importing ${acceptedFiles[i].name}.`,
+              });
+            },
+            onError: () => {
+              this.updateToast(gifImportToastID, {
+                type: 'error',
+                text: `Could not import ${acceptedFiles[i].name}.`,
+              });
             },
             onFinish: (gifAsset) => {
                 this.project.addAsset(gifAsset);
                 this.projectDidChange({ actionName: "Add Asset" });
                 if (options.create) this.createImageFromAsset(gifAsset.uuid, options.location.x || 0, options.location.y || 0);
+                this.updateToast(gifImportToastID, {
+                  type: 'success',
+                  text: `Imported ${acceptedFiles[i].name} successfully.`,
+                });
             }});
       } else {
         var file = acceptedFiles[i];
