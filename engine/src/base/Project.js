@@ -1553,7 +1553,7 @@ Wick.Project = class extends Wick.Base {
                 return;
             }
 
-            this._tickIntervalID = requestAnimationFrame(runPlaybackFrame);
+            this._rafID = requestAnimationFrame(runPlaybackFrame);
         };
 
         this._tickIntervalID = requestAnimationFrame(runPlaybackFrame);
