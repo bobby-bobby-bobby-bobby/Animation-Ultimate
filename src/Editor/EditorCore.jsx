@@ -22,6 +22,7 @@ import queryString from 'query-string';
 import VideoExport from './export/VideoExport';
 import GIFExport from './export/GIFExport';
 import GIFImport from './import/GIFImport';
+import VideoImport from './import/VideoImport';
 import AudioExport from './export/AudioExport';
 
 class EditorCore extends Component {
@@ -927,7 +928,7 @@ class EditorCore extends Component {
     }
 
     // Add all successfully uploaded assets
-    for(var i = 0; i < acceptedFiles.length; i++) {
+    for(let i = 0; i < acceptedFiles.length; i++) {
       if(acceptedFiles[i].type === 'image/gif') {
         GIFImport.importGIFIntoProject({
             gifFile: acceptedFiles[i],
@@ -940,6 +941,33 @@ class EditorCore extends Component {
                 this.projectDidChange({ actionName: "Add Asset" });
                 if (options.create) this.createImageFromAsset(gifAsset.uuid, options.location.x || 0, options.location.y || 0);
             }});
+      } else if (VideoImport.SUPPORTED_TYPES.indexOf(acceptedFiles[i].type) !== -1) {
+        VideoImport.importVideoIntoProject({
+          videoFile: acceptedFiles[i],
+          project: this.project,
+          fps: this.project.framerate,
+          onProgress: (completed, total, message) => {
+            this.updateToast(toastID, {
+              type: 'info',
+              text: `${message || 'Importing video'} (${completed}/${total})`,
+            });
+          },
+          onFinish: (clipAsset) => {
+            this.project.addAsset(clipAsset);
+            this.projectDidChange({ actionName: 'Add Asset' });
+            this.updateToast(toastID, {
+              type: 'success',
+              text: `Imported ${acceptedFiles[i].name} successfully.`,
+            });
+            if (options.create) this.createImageFromAsset(clipAsset.uuid, options.location.x || 0, options.location.y || 0);
+          },
+          onError: (errorMessage) => {
+            this.updateToast(toastID, {
+              type: 'error',
+              text: `Could not import ${acceptedFiles[i].name}: ${errorMessage}`,
+            });
+          },
+        });
       } else {
         var file = acceptedFiles[i];
 

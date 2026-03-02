@@ -29,7 +29,8 @@ Wick.FileAsset = class extends Wick.Asset {
         let clipTypes = Wick.ClipAsset.getValidMIMETypes();
         let svgTypes = Wick.SVGAsset.getValidMIMETypes();
         let gifTypes = Wick.GIFAsset.getValidMIMETypes();
-        return imageTypes.concat(soundTypes).concat(fontTypes).concat(clipTypes).concat(svgTypes).concat(gifTypes);
+        let videoTypes = ['video/mp4', 'video/webm'];
+        return imageTypes.concat(soundTypes).concat(fontTypes).concat(clipTypes).concat(svgTypes).concat(gifTypes).concat(videoTypes);
     }
 
     /**
@@ -44,12 +45,14 @@ Wick.FileAsset = class extends Wick.Asset {
         let clipExtensions = Wick.ClipAsset.getValidExtensions();
         let svgExtensions = Wick.SVGAsset.getValidExtensions();
         let gifExtensions = Wick.GIFAsset.getValidExtensions();
+        let videoExtensions = ['.mp4', '.webm'];
         return imageExtensions
             .concat(soundExtensions)
             .concat(fontExtensions)
             .concat(clipExtensions)
             .concat(svgExtensions)
-            .concat(gifExtensions);
+            .concat(gifExtensions)
+            .concat(videoExtensions);
     }
 
     /**
