@@ -71,6 +71,8 @@ Wick.Project = class extends Wick.Base {
         this._currentKey = null;
 
         this._tickIntervalID = null;
+        this._tickAccumulator = 0;
+        this._lastTickTimestamp = null;
 
         this._hideCursor = false;
         this._muted = false;
@@ -1496,28 +1498,65 @@ Wick.Project = class extends Wick.Base {
 
         this.selection.clear();
 
-        // Start tick loop
-        this._tickIntervalID = setInterval(() => {
-            args.onBeforeTick();
+        this._tickAccumulator = 0;
+        this._lastTickTimestamp = performance.now();
 
-            this.tools.interact.determineMouseTargets();
-            // console.time('tick');
-            var error = this.tick();
-            // console.timeEnd('tick');
+        const frameDuration = 1000 / this.framerate;
+        const maxCatchUpSteps = 5;
+
+        const runPlaybackFrame = (timestamp) => {
+            if (!this._playing) {
+                return;
+            }
+
+            var deltaTime = timestamp - this._lastTickTimestamp;
+            this._lastTickTimestamp = timestamp;
+
+            if (deltaTime < 0) {
+                deltaTime = 0;
+            }
+
+            this._tickAccumulator += deltaTime;
+
+            var steps = 0;
+            var error = null;
+            while (this._tickAccumulator >= frameDuration && steps < maxCatchUpSteps) {
+                args.onBeforeTick();
+
+                this.tools.interact.determineMouseTargets();
+                // console.time('tick');
+                error = this.tick();
+                // console.timeEnd('tick');
+
+                if (error) {
+                    break;
+                }
+
+                // console.time('afterTick');
+                args.onAfterTick();
+                // console.timeEnd('afterTick');
+
+                this._tickAccumulator -= frameDuration;
+                steps++;
+            }
+
+            if (steps === maxCatchUpSteps && this._tickAccumulator >= frameDuration) {
+                this._tickAccumulator = frameDuration;
+            }
 
             // console.time('update');
             this.view.paper.view.update();
             // console.timeEnd('update');
 
-            if(error) {
+            if (error) {
                 this.stop();
                 return;
             }
 
-            // console.time('afterTick');
-            args.onAfterTick();
-            // console.timeEnd('afterTick');
-        }, 1000 / this.framerate);
+            this._tickIntervalID = requestAnimationFrame(runPlaybackFrame);
+        };
+
+        this._tickIntervalID = requestAnimationFrame(runPlaybackFrame);
     }
 
     /**
@@ -1576,8 +1615,10 @@ Wick.Project = class extends Wick.Base {
 
         this.stopAllSounds();
 
-        clearInterval(this._tickIntervalID);
+        cancelAnimationFrame(this._tickIntervalID);
         this._tickIntervalID = null;
+        this._tickAccumulator = 0;
+        this._lastTickTimestamp = null;
 
         // Loading the snapshot to restore project state also moves the playhead back to where it was originally.
         // We actually don't want this, preview play should actually move the playhead after it's stopped.
