@@ -70,7 +70,7 @@ Wick.Project = class extends Wick.Base {
         this._keysLastDown = [];
         this._currentKey = null;
 
-        this._tickIntervalID = null;
+        this._rafID = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
 
