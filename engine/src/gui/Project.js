@@ -537,7 +537,8 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
         if(e.buttons === 0 && !this.canvasClicked && mouseOffCanvas) {
             if(this._mouseHoverTargets.length > 0) {
                 this._mouseHoverTargets = [];
-                this.requestDraw('tooltips');
+                // Mouse left the canvas: clear hover targets and fully redraw to remove any hover visuals.
+                this.requestDraw();
             }
             return;
         }
