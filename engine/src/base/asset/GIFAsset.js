@@ -69,14 +69,20 @@ Wick.GIFAsset = class extends Wick.ClipAsset {
                 // Check if all images have been created
                 imagesCreatedCount++;
                 if(imagesCreatedCount === images.length) {
-                    Wick.ClipAsset.fromClip(clip, project, clipAsset => {
+                    Wick.GIFAsset.fromClip(clip, project, gifAsset => {
+                        // Store import metadata so it persists on save/load
+                        gifAsset.sequenceImportMeta = {
+                            fps: fps,
+                            frameLength: frameLength,
+                        };
+
                         // Attach a reference to the resulting clip to all images
                         images.forEach(image => {
                             image.gifAssetUUID = clip.uuid;
                         });
 
                         clip.remove();
-                        callback(clipAsset);
+                        callback(gifAsset);
                     });
                 } else {
                     processNextImage();
