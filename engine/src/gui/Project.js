@@ -217,11 +217,15 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
     }
 
     requestDraw (...sections) {
-        sections.forEach(section => {
-            if(section) {
-                this._dirtySections.add(section);
-            }
-        });
+        if(sections.length === 0) {
+            this._dirtySections.add('full');
+        } else {
+            sections.forEach(section => {
+                if(section) {
+                    this._dirtySections.add(section);
+                }
+            });
+        }
 
         if(this._drawRequest) return;
 
@@ -231,7 +235,7 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
             var dirtySections = [...this._dirtySections];
             this._dirtySections.clear();
 
-            if(dirtySections.length === 0) {
+            if(dirtySections.includes('full')) {
                 this.draw();
                 return;
             }
