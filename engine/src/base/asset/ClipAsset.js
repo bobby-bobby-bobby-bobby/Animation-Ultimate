@@ -46,8 +46,8 @@ Wick.ClipAsset = class extends Wick.FileAsset {
             // Convert blob to dataURL
             var a = new FileReader();
             a.onload = (e) => {
-                // Create ClipAsset
-                var clipAsset = new Wick.ClipAsset({
+                // Create ClipAsset (or subclass instance if called via subclass)
+                var clipAsset = new this({
                     filename: (clip.identifier || 'clip') + '.wickobj',
                     src: e.target.result,
                 });
