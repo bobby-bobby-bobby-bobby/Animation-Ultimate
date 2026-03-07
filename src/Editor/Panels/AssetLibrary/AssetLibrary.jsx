@@ -123,7 +123,7 @@ class AssetLibrary extends Component {
             color="upload"
             action={this.openImageSequenceDialog}
             id="button-asset-upload-sequence"
-            icon="upload"
+            icon="layerTween"
             tooltip="Import Image Sequence" />
         </div>
       </div>
