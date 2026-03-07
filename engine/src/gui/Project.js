@@ -297,9 +297,9 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
             var xMin = 3;
             if(tx < xMin) tx = xMin;
             if(ty > this.canvas.height) {
-                ty = this.canvas.height - 35;
-            } else if (ty > this.canvas.height - 25) {
-                ty = this.canvas.height - 20;
+                ty = this.canvas.height - TOOLTIP_BOTTOM_OFFSET_LARGE;
+            } else if (ty > this.canvas.height - TOOLTIP_BOTTOM_OFFSET_SMALL) {
+                ty = this.canvas.height - TOOLTIP_BOTTOM_OFFSET_MEDIUM;
             }
 
             var margin = 4;
