@@ -176,7 +176,7 @@ class Editor extends EditorCore {
 
     // Image-sequence specific file input
     this.openAssetSequenceFileFromClient = window.createFileInput({
-      accept: '.zip, .png, .jpg, .jpeg, .gif, .webp, .svg',
+      accept: '.png, .jpg, .jpeg, .gif, .svg',
       onChange: this.handleAssetSequenceFileImport,
       multiple: true,
     });
