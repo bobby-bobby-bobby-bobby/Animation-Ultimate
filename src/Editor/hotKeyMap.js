@@ -289,7 +289,8 @@ class HotKeyInterface extends Object {
       },
       'import-image-sequence': {
         name: "Import Image Sequence",
-        sequences: ['meta+shift+i'],
+        // Intentionally unbound by default to avoid reserved browser shortcut Ctrl+Shift+I.
+        sequences: [],
       },
       'create-clip-from-selection': {
         name: "Create Clip from Selection",
