@@ -424,6 +424,16 @@ Wick.View.Project = class extends Wick.View {
 
         // Generate frame layers
         if (this._dirtyFlags.timelineContent || this._dirtyFlags.onionSkinOverlays) {
+            // Remove stale non-persistent layers so hidden/deleted/focus-switched
+            // layers from a previous render don't remain in the paper project.
+            var persistentLayerNames = ['wick_project_bg', 'wick_project_gui', 'wick_project_borders'];
+            var selectionLayer = this.model.selection.view.layer;
+            this.paper.project.layers.slice().forEach(layer => {
+                if (!persistentLayerNames.includes(layer.name) && layer !== selectionLayer) {
+                    layer.remove();
+                }
+            });
+
             this.model.focus.timeline.view.render();
         }
 
@@ -460,7 +470,7 @@ Wick.View.Project = class extends Wick.View {
         nextLayerIndex += 1;
 
         // Render black bars (for published projects)
-        if((this._dirtyFlags.transform || this._dirtyFlags.timelineContent || this._dirtyFlags.background) &&
+        if((this._dirtyFlags.transform || this._dirtyFlags.timelineContent || this._dirtyFlags.background || this._dirtyFlags.borders) &&
             this.model.isPublished && this.model.renderBlackBars) {
             this._svgBordersLayer.removeChildren();
             this._svgBordersLayer.addChildren(this._generateSVGBorders());
@@ -475,6 +485,7 @@ Wick.View.Project = class extends Wick.View {
         this._dirtyFlags.onionSkinOverlays = false;
         this._dirtyFlags.guiOverlays = false;
         this._dirtyFlags.background = false;
+        this._dirtyFlags.borders = false;
         this._lastRenderState = this._captureRenderState();
     }
 
@@ -486,6 +497,7 @@ Wick.View.Project = class extends Wick.View {
             onionSkinOverlays: true,
             guiOverlays: true,
             background: true,
+            borders: true,
         };
 
         if (!this._dirtyFlags) {
@@ -512,6 +524,10 @@ Wick.View.Project = class extends Wick.View {
             showClipBorders: this.model.showClipBorders,
             isPublished: this.model.isPublished,
             renderBlackBars: this.model.renderBlackBars,
+            playing: this.model.playing,
+            onionSkinEnabled: this.model.onionSkinEnabled,
+            onionSkinSeekBackwards: this.model.onionSkinSeekBackwards,
+            onionSkinSeekForwards: this.model.onionSkinSeekForwards,
         };
     }
 
@@ -555,12 +571,20 @@ Wick.View.Project = class extends Wick.View {
         }
 
         if (state.showClipBorders !== this._lastRenderState.showClipBorders ||
-            state.isPublished !== this._lastRenderState.isPublished) {
+            state.isPublished !== this._lastRenderState.isPublished ||
+            state.playing !== this._lastRenderState.playing) {
             this._dirtyFlags.guiOverlays = true;
         }
 
-        if (state.renderBlackBars !== this._lastRenderState.renderBlackBars) {
-            this._dirtyFlags.background = true;
+        if (state.isPublished !== this._lastRenderState.isPublished ||
+            state.renderBlackBars !== this._lastRenderState.renderBlackBars) {
+            this._dirtyFlags.borders = true;
+        }
+
+        if (state.onionSkinEnabled !== this._lastRenderState.onionSkinEnabled ||
+            state.onionSkinSeekBackwards !== this._lastRenderState.onionSkinSeekBackwards ||
+            state.onionSkinSeekForwards !== this._lastRenderState.onionSkinSeekForwards) {
+            this._dirtyFlags.onionSkinOverlays = true;
         }
 
         if (!options.transformOnly) {
