@@ -25,7 +25,7 @@
 // high-resolution performance timer (e.g. embedded/older runtimes).
 var _wickRaf = (typeof requestAnimationFrame !== 'undefined')
     ? requestAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
-    : function (cb) { return setTimeout(cb, 16); };
+    : function (cb) { return setTimeout(function () { cb(_wickPerfNow()); }, 16); };
 var _wickCancelRaf = (typeof cancelAnimationFrame !== 'undefined')
     ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
     : clearTimeout;
@@ -89,12 +89,8 @@ Wick.Project = class extends Wick.Base {
 
         // Backwards compatibility: `_tickIntervalID` is kept as an alias for `_tickRafId`.
         Object.defineProperty(this, '_tickIntervalID', {
-            get: function () {
-                return this._tickRafId;
-            },
-            set: function (value) {
-                this._tickRafId = value;
-            },
+            get: () => this._tickRafId,
+            set: (value) => { this._tickRafId = value; },
             enumerable: true,
             configurable: true,
         });
