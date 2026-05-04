@@ -70,9 +70,21 @@ Wick.Project = class extends Wick.Base {
         this._keysLastDown = [];
         this._currentKey = null;
 
-        this._rafID = null;
+        this._tickRafId = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
+
+        // Backwards compatibility: `_tickIntervalID` is kept as an alias for `_tickRafId`.
+        Object.defineProperty(this, '_tickIntervalID', {
+            get: function () {
+                return this._tickRafId;
+            },
+            set: function (value) {
+                this._tickRafId = value;
+            },
+            enumerable: true,
+            configurable: true,
+        });
 
         this._hideCursor = false;
         this._muted = false;
@@ -1485,12 +1497,15 @@ Wick.Project = class extends Wick.Base {
 
         window._scriptOnErrorCallback = args.onError;
 
-        this._playing = true;
-        this.view.paper.view.autoUpdate = false;
-
-        if (this._tickIntervalID) {
+        // Stop any existing playback loop before starting a new one so that
+        // calling play() while already playing correctly restarts rather than
+        // leaving _playing = false after stop() returns.
+        if (this._tickRafId) {
             this.stop();
         }
+
+        this._playing = true;
+        this.view.paper.view.autoUpdate = false;
 
         this.error = null;
 
@@ -1498,8 +1513,20 @@ Wick.Project = class extends Wick.Base {
 
         this.selection.clear();
 
+        // Compatibility shims for environments that may not expose RAF or
+        // the high-resolution performance timer (e.g. embedded/older runtimes).
+        var _raf = (typeof requestAnimationFrame !== 'undefined')
+            ? requestAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
+            : function (cb) { return setTimeout(cb, 16); };
+        var _cancelRaf = (typeof cancelAnimationFrame !== 'undefined')
+            ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
+            : clearTimeout;
+        var _perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+            ? performance.now.bind(performance)
+            : Date.now.bind(Date);
+
         this._tickAccumulator = 0;
-        this._lastTickTimestamp = performance.now();
+        this._lastTickTimestamp = _perfNow();
 
         const frameDuration = 1000 / this.framerate;
         const maxCatchUpSteps = 5;
@@ -1553,10 +1580,10 @@ Wick.Project = class extends Wick.Base {
                 return;
             }
 
-            this._rafID = requestAnimationFrame(runPlaybackFrame);
+            this._tickRafId = _raf(runPlaybackFrame);
         };
 
-        this._rafID = requestAnimationFrame(runPlaybackFrame);
+        this._tickRafId = _raf(runPlaybackFrame);
     }
 
     /**
@@ -1615,8 +1642,11 @@ Wick.Project = class extends Wick.Base {
 
         this.stopAllSounds();
 
-        cancelAnimationFrame(this._rafID);
-        this._tickIntervalID = null;
+        var _cancelRaf = (typeof cancelAnimationFrame !== 'undefined')
+            ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
+            : clearTimeout;
+        _cancelRaf(this._tickRafId);
+        this._tickRafId = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
 
