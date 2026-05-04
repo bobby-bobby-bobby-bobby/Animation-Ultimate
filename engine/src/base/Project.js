@@ -20,6 +20,19 @@
 /**
  * Class representing a Wick Project.
  */
+
+// Compatibility shims for environments that may not expose RAF or the
+// high-resolution performance timer (e.g. embedded/older runtimes).
+var _wickRaf = (typeof requestAnimationFrame !== 'undefined')
+    ? requestAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
+    : function (cb) { return setTimeout(cb, 16); };
+var _wickCancelRaf = (typeof cancelAnimationFrame !== 'undefined')
+    ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
+    : clearTimeout;
+var _wickPerfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
+    ? performance.now.bind(performance)
+    : Date.now.bind(Date);
+
 Wick.Project = class extends Wick.Base {
     /**
      * Create a project.
@@ -1513,20 +1526,8 @@ Wick.Project = class extends Wick.Base {
 
         this.selection.clear();
 
-        // Compatibility shims for environments that may not expose RAF or
-        // the high-resolution performance timer (e.g. embedded/older runtimes).
-        var _raf = (typeof requestAnimationFrame !== 'undefined')
-            ? requestAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
-            : function (cb) { return setTimeout(cb, 16); };
-        var _cancelRaf = (typeof cancelAnimationFrame !== 'undefined')
-            ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
-            : clearTimeout;
-        var _perfNow = (typeof performance !== 'undefined' && typeof performance.now === 'function')
-            ? performance.now.bind(performance)
-            : Date.now.bind(Date);
-
         this._tickAccumulator = 0;
-        this._lastTickTimestamp = _perfNow();
+        this._lastTickTimestamp = _wickPerfNow();
 
         const frameDuration = 1000 / this.framerate;
         const maxCatchUpSteps = 5;
@@ -1580,10 +1581,10 @@ Wick.Project = class extends Wick.Base {
                 return;
             }
 
-            this._tickRafId = _raf(runPlaybackFrame);
+            this._tickRafId = _wickRaf(runPlaybackFrame);
         };
 
-        this._tickRafId = _raf(runPlaybackFrame);
+        this._tickRafId = _wickRaf(runPlaybackFrame);
     }
 
     /**
@@ -1642,10 +1643,7 @@ Wick.Project = class extends Wick.Base {
 
         this.stopAllSounds();
 
-        var _cancelRaf = (typeof cancelAnimationFrame !== 'undefined')
-            ? cancelAnimationFrame.bind(typeof window !== 'undefined' ? window : globalThis)
-            : clearTimeout;
-        _cancelRaf(this._tickRafId);
+        _wickCancelRaf(this._tickRafId);
         this._tickRafId = null;
         this._tickAccumulator = 0;
         this._lastTickTimestamp = null;
