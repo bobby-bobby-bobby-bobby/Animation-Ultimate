@@ -71,8 +71,13 @@ Wick.View.Project = class extends Wick.View {
         this._svgBordersLayer = null;
         this._svgGUILayer = null;
 
+        this._dirtyFlags = null;
+        this._lastRenderState = null;
+
         this._pan = { x: 0, y: 0 };
         this._zoom = 1;
+
+        this._invalidateRender();
     }
 
     /*
@@ -174,14 +179,20 @@ Wick.View.Project = class extends Wick.View {
     /**
      * Render the view.
      */
-    render() {
+    render(options = {}) {
         this.zoom = this.model.zoom;
         this.pan = this.model.pan;
+
+        if (options.forceFullRender) {
+            this._invalidateRender();
+        }
+
+        this._refreshDirtyFlags(options);
 
         this._buildSVGCanvas();
         this._displayCanvasInContainer(this._svgCanvas);
         this.resize();
-        this._renderSVGCanvas();
+        this._renderSVGCanvas(options);
         this._updateCanvasContainerBGColor();
     }
 
@@ -189,10 +200,30 @@ Wick.View.Project = class extends Wick.View {
      * Render all frames in the project to make sure everything is loaded correctly.
      */
     prerender() {
-        this.render();
+        this.render({ forceFullRender: true });
         this.model.getAllFrames().forEach(frame => {
             frame.view.render();
         });
+    }
+
+    invalidateForTimelineStructureChange() {
+        this._invalidateRender({
+            transform: false,
+            timelineContent: true,
+            selection: true,
+            onionSkinOverlays: true,
+            guiOverlays: true,
+            background: false,
+        });
+    }
+
+    invalidateForFocusSwitch() {
+        this._invalidateRender();
+    }
+
+    invalidateForProjectLoad() {
+        this._lastRenderState = null;
+        this._invalidateRender();
     }
 
     /*
@@ -328,8 +359,15 @@ Wick.View.Project = class extends Wick.View {
         this.paper.project.clear();
     }
 
-    _renderSVGCanvas() {
-        this.paper.project.clear();
+    _renderSVGCanvas(options = {}) {
+        var quickTransformOnly = options.transformOnly && !options.forceFullRender &&
+            this._dirtyFlags.transform &&
+            !this._dirtyFlags.timelineContent &&
+            !this._dirtyFlags.selection &&
+            !this._dirtyFlags.onionSkinOverlays &&
+            !this._dirtyFlags.guiOverlays &&
+            !this._dirtyFlags.background &&
+            !(this.model.isPublished && this.model.renderBlackBars);
 
         // Lazily setup tools
         if (!this._toolsSetup) {
@@ -360,26 +398,51 @@ Wick.View.Project = class extends Wick.View {
         this.paper.view.center = new paper.Point(-pan.x, -pan.y);
         this.paper.view.rotation = this.model.rotation;
 
-        // Generate background layer
-        this._svgBackgroundLayer.removeChildren();
-        this._svgBackgroundLayer.locked = true;
-        this.paper.project.addLayer(this._svgBackgroundLayer);
+        if (quickTransformOnly) {
+            this._dirtyFlags.transform = false;
+            this._lastRenderState = this._captureRenderState();
+            return;
+        }
 
-        if (this.model.focus.isRoot) {
-            // We're in the root timeline, render the canvas normally
-            var stage = this._generateSVGCanvasStage();
-            this._svgBackgroundLayer.addChild(stage);
-        } else {
-            // We're inside a clip, don't render the canvas BG, instead render a crosshair at (0,0)
-            var originCrosshair = this._generateSVGOriginCrosshair();
-            this._svgBackgroundLayer.addChild(originCrosshair);
+        this._ensurePersistentLayers();
+
+        // Generate background layer
+        if (this._dirtyFlags.background || this._dirtyFlags.transform) {
+            this._svgBackgroundLayer.removeChildren();
+            this._svgBackgroundLayer.locked = true;
+
+            if (this.model.focus.isRoot) {
+                // We're in the root timeline, render the canvas normally
+                var stage = this._generateSVGCanvasStage();
+                this._svgBackgroundLayer.addChild(stage);
+            } else {
+                // We're inside a clip, don't render the canvas BG, instead render a crosshair at (0,0)
+                var originCrosshair = this._generateSVGOriginCrosshair();
+                this._svgBackgroundLayer.addChild(originCrosshair);
+            }
         }
 
         // Generate frame layers
-        this.model.focus.timeline.view.render();
+        if (this._dirtyFlags.timelineContent || this._dirtyFlags.onionSkinOverlays) {
+            // Remove stale non-persistent layers so hidden/deleted/focus-switched
+            // layers from a previous render don't remain in the paper project.
+            var persistentLayerNames = ['wick_project_bg', 'wick_project_gui', 'wick_project_borders'];
+            var selectionLayer = this.model.selection.view.layer;
+            this.paper.project.layers.slice().forEach(layer => {
+                if (!persistentLayerNames.includes(layer.name) && layer !== selectionLayer) {
+                    layer.remove();
+                }
+            });
+
+            this.model.focus.timeline.view.render();
+        }
+
+        var nextLayerIndex = 1;
         this.model.focus.timeline.view.frameLayers.forEach(layer => {
-            this.paper.project.addLayer(layer);
-            if (this.model.project &&
+            this.paper.project.insertLayer(nextLayerIndex, layer);
+            nextLayerIndex += 1;
+            if ((this._dirtyFlags.timelineContent || this._dirtyFlags.onionSkinOverlays) &&
+                this.model.project &&
                 this.model.project.activeFrame &&
                 !layer.locked &&
                 (layer.data.wickType === 'paths' || layer.data.wickType === 'clipsandpaths') &&
@@ -389,23 +452,148 @@ Wick.View.Project = class extends Wick.View {
         });
 
         // Render selection
-        this.model.selection.view.render();
-        this.paper.project.addLayer(this.model.selection.view.layer);
+        if (this._dirtyFlags.selection || this._dirtyFlags.timelineContent) {
+            this.model.selection.view.render();
+        }
+        this.paper.project.insertLayer(nextLayerIndex, this.model.selection.view.layer);
+        nextLayerIndex += 1;
 
         // Render GUI Layer
-        this._svgGUILayer.removeChildren();
-        this._svgGUILayer.locked = true;
-        if(this.model.showClipBorders && !this.model.playing && !this.model.isPublished) {
-            this._svgGUILayer.addChildren(this._generateClipBorders());
-            this.paper.project.addLayer(this._svgGUILayer);
+        if (this._dirtyFlags.guiOverlays || this._dirtyFlags.timelineContent) {
+            this._svgGUILayer.removeChildren();
+            this._svgGUILayer.locked = true;
+            if(this.model.showClipBorders && !this.model.playing && !this.model.isPublished) {
+                this._svgGUILayer.addChildren(this._generateClipBorders());
+            }
         }
+        this.paper.project.insertLayer(nextLayerIndex, this._svgGUILayer);
+        nextLayerIndex += 1;
 
         // Render black bars (for published projects)
-        if(this.model.isPublished && this.model.renderBlackBars) {
+        if((this._dirtyFlags.transform || this._dirtyFlags.timelineContent || this._dirtyFlags.background || this._dirtyFlags.borders) &&
+            this.model.isPublished && this.model.renderBlackBars) {
             this._svgBordersLayer.removeChildren();
             this._svgBordersLayer.addChildren(this._generateSVGBorders());
-            this.paper.project.addLayer(this._svgBordersLayer);
+        } else if (!(this.model.isPublished && this.model.renderBlackBars) && this._svgBordersLayer.children.length > 0) {
+            this._svgBordersLayer.removeChildren();
         }
+        this.paper.project.insertLayer(nextLayerIndex, this._svgBordersLayer);
+
+        this._dirtyFlags.transform = false;
+        this._dirtyFlags.timelineContent = false;
+        this._dirtyFlags.selection = false;
+        this._dirtyFlags.onionSkinOverlays = false;
+        this._dirtyFlags.guiOverlays = false;
+        this._dirtyFlags.background = false;
+        this._dirtyFlags.borders = false;
+        this._lastRenderState = this._captureRenderState();
+    }
+
+    _invalidateRender(flags) {
+        var defaultFlags = {
+            transform: true,
+            timelineContent: true,
+            selection: true,
+            onionSkinOverlays: true,
+            guiOverlays: true,
+            background: true,
+            borders: true,
+        };
+
+        if (!this._dirtyFlags) {
+            this._dirtyFlags = defaultFlags;
+            return;
+        }
+
+        Object.keys(defaultFlags).forEach(flag => {
+            this._dirtyFlags[flag] = flags && flag in flags ? flags[flag] : this._dirtyFlags[flag] || defaultFlags[flag];
+        });
+    }
+
+    _captureRenderState() {
+        return {
+            focusUUID: this.model.focus.uuid,
+            timelineUUID: this.model.focus.timeline.uuid,
+            playheadPosition: this.model.focus.timeline.playheadPosition,
+            zoom: this.model.zoom,
+            panX: this.model.pan.x,
+            panY: this.model.pan.y,
+            rotation: this.model.rotation,
+            focusIsRoot: this.model.focus.isRoot,
+            backgroundColor: this.model.backgroundColor.rgba,
+            showClipBorders: this.model.showClipBorders,
+            isPublished: this.model.isPublished,
+            renderBlackBars: this.model.renderBlackBars,
+            playing: this.model.playing,
+            onionSkinEnabled: this.model.onionSkinEnabled,
+            onionSkinSeekBackwards: this.model.onionSkinSeekBackwards,
+            onionSkinSeekForwards: this.model.onionSkinSeekForwards,
+        };
+    }
+
+    _refreshDirtyFlags(options = {}) {
+        if (!this._lastRenderState) {
+            this._invalidateRender();
+            return;
+        }
+
+        var state = this._captureRenderState();
+        var focusChanged = state.focusUUID !== this._lastRenderState.focusUUID;
+        var timelineChanged = state.timelineUUID !== this._lastRenderState.timelineUUID ||
+            state.playheadPosition !== this._lastRenderState.playheadPosition;
+        var transformChanged = state.zoom !== this._lastRenderState.zoom ||
+            state.panX !== this._lastRenderState.panX ||
+            state.panY !== this._lastRenderState.panY ||
+            state.rotation !== this._lastRenderState.rotation;
+
+        if (focusChanged || options.forceFullRender) {
+            this._invalidateRender();
+            return;
+        }
+
+        if (timelineChanged) {
+            this._dirtyFlags.timelineContent = true;
+            this._dirtyFlags.onionSkinOverlays = true;
+            this._dirtyFlags.guiOverlays = true;
+            this._dirtyFlags.selection = true;
+        }
+
+        if (transformChanged) {
+            this._dirtyFlags.transform = true;
+            if (!state.focusIsRoot) {
+                this._dirtyFlags.background = true;
+            }
+        }
+
+        if (state.backgroundColor !== this._lastRenderState.backgroundColor ||
+            state.focusIsRoot !== this._lastRenderState.focusIsRoot) {
+            this._dirtyFlags.background = true;
+        }
+
+        if (state.showClipBorders !== this._lastRenderState.showClipBorders ||
+            state.isPublished !== this._lastRenderState.isPublished ||
+            state.playing !== this._lastRenderState.playing) {
+            this._dirtyFlags.guiOverlays = true;
+        }
+
+        if (state.isPublished !== this._lastRenderState.isPublished ||
+            state.renderBlackBars !== this._lastRenderState.renderBlackBars) {
+            this._dirtyFlags.borders = true;
+        }
+
+        if (state.onionSkinEnabled !== this._lastRenderState.onionSkinEnabled ||
+            state.onionSkinSeekBackwards !== this._lastRenderState.onionSkinSeekBackwards ||
+            state.onionSkinSeekForwards !== this._lastRenderState.onionSkinSeekForwards) {
+            this._dirtyFlags.onionSkinOverlays = true;
+        }
+
+        if (!options.transformOnly) {
+            this._dirtyFlags.selection = true;
+        }
+    }
+
+    _ensurePersistentLayers() {
+        this.paper.project.insertLayer(0, this._svgBackgroundLayer);
     }
 
     _generateSVGCanvasStage() {
@@ -554,6 +742,6 @@ Wick.View.Project = class extends Wick.View {
         this.zoom = this.paper.view.zoom;
         this.model.zoom = this.zoom;
 
-        this.render();
+        this.render({ transformOnly: true });
     }
 }
