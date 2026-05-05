@@ -1,44 +1,52 @@
 import * as fastgif from './fastgif.js';
+import FrameIngest from './FrameIngest';
 
 class GIFImport {
   static importGIFIntoProject (args) {
-    let { gifFile, project, onFinish } = args;
+    let { gifFile, project, onFinish, onProgress, onCancel, onError, onRegisterCancel } = args;
 
-    var a = new FileReader();
+    let a = new FileReader();
     a.onload = (e) => {
-      var buf = e.target.result;
-
-      var dataURLs = [];
+      let buf = e.target.result;
 
       const wasmDecoder = new fastgif.Decoder();
       wasmDecoder.decode(buf).then(decoded => {
-        var tempCanvas = document.createElement('canvas');
-        var tempCtx = tempCanvas.getContext('2d');
-        decoded.forEach(frame => {
-          tempCanvas.width = frame.imageData.width;
-          tempCanvas.height = frame.imageData.height;
-          tempCtx.putImageData(frame.imageData, 0, 0);
-          dataURLs.push(tempCanvas.toDataURL());
-        });
+        let tempCanvas = document.createElement('canvas');
+        let tempCtx = tempCanvas.getContext('2d');
 
-        var imageAssets = [];
-        dataURLs.forEach(dataURL => {
-            var imageAsset = new window.Wick.ImageAsset({
-                filename: gifFile.name + '_' + dataURLs.indexOf(dataURL) + '.png',
-                src: dataURL,
-            });
-            project.addAsset(imageAsset);
-            imageAssets.push(imageAsset);
-        });
-        project.loadAssets(() => {
+        FrameIngest.importFramesIntoProject({
+          project,
+          frameCount: decoded.length,
+          filenameBase: gifFile.name,
+          maxBufferedFrames: 4,
+          onProgress,
+          onCancel,
+          onError,
+          onRegisterCancel,
+          frameProducer: async (pushFrame, isCancelled) => {
+            for (let frameIndex = 0; frameIndex < decoded.length; frameIndex++) {
+              if (isCancelled()) return;
+
+              let frame = decoded[frameIndex];
+              tempCanvas.width = frame.imageData.width;
+              tempCanvas.height = frame.imageData.height;
+              tempCtx.putImageData(frame.imageData, 0, 0);
+
+              let frameBlob = await FrameIngest.canvasFrameToBlob(tempCanvas);
+              await pushFrame(frameBlob, frameIndex);
+            }
+          },
+          onFinish: (imageAssets) => {
             window.Wick.GIFAsset.fromImages(imageAssets, project, gifAsset => {
-                gifAsset.name = gifFile.name;
-                gifAsset.filename = gifFile.name;
-                onFinish(gifAsset);
+              gifAsset.name = gifFile.name;
+              gifAsset.filename = gifFile.name;
+              onFinish(gifAsset);
             });
-        })
+          },
+        });
       });
-    }
+    };
+
     a.readAsArrayBuffer(gifFile);
   }
 }
