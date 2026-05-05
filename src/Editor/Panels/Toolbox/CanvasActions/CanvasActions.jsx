@@ -35,6 +35,8 @@ class CanvasActions extends Component {
         {this.renderActionButton(this.props.editorActions.booleanUnite)}
         {this.renderActionButton(this.props.editorActions.booleanSubtract)}
         {this.renderActionButton(this.props.editorActions.booleanIntersect)}
+        <ToolboxBreak vertical={this.props.renderSize === "small"}/>
+        {this.renderActionButton(this.props.editorActions.importImageSequence)}
       </div>
     );
   }

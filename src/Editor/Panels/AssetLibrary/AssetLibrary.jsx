@@ -44,6 +44,10 @@ class AssetLibrary extends Component {
     this.props.openModal('BuiltinLibrary');
   }
 
+  openImageSequenceDialog = () => {
+    this.props.openImportAssetSequenceFileDialog();
+  }
+
   updateFilter = (text) => {
     this.setState({
       filterText: text,
@@ -113,6 +117,14 @@ class AssetLibrary extends Component {
             id="button-asset-upload"
             icon="upload"
             tooltip="Upload Assets" />
+        </div>
+        <div className="btn-asset-builtin">
+          <ActionButton
+            color="upload"
+            action={this.openImageSequenceDialog}
+            id="button-asset-upload-sequence"
+            icon="layerTween"
+            tooltip="Import Image Sequence" />
         </div>
       </div>
     )

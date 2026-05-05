@@ -119,6 +119,7 @@ class MobileContainer extends Component {
                     assets={props.assets}
                     openModal={props.openModal}
                     openImportAssetFileDialog={props.openImportAssetFileDialog}
+                    openImportAssetSequenceFileDialog={props.openImportAssetSequenceFileDialog}
                     selectObjects={props.selectObjects}
                     clearSelection={props.clearSelection}
                     isObjectSelected={props.isObjectSelected}

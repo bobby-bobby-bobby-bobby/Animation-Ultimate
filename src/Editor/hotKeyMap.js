@@ -287,6 +287,11 @@ class HotKeyInterface extends Object {
         name: "Open Project",
         sequences: ['meta+o'],
       },
+      'import-image-sequence': {
+        name: "Import Image Sequence",
+        // Intentionally unbound by default to avoid reserved browser shortcut Ctrl+Shift+I.
+        sequences: [],
+      },
       'create-clip-from-selection': {
         name: "Create Clip from Selection",
         sequences: ['meta+g'],
@@ -423,6 +428,10 @@ class HotKeyInterface extends Object {
         "export-project-as-wick-file",
         "export-selection",
       ],
+      "Import": [
+        "import-project-as-wick-file",
+        "import-image-sequence",
+      ],
       "Preview": [
         "preview-play-toggle",
         "preview-play-from-start",
@@ -490,6 +499,7 @@ class HotKeyInterface extends Object {
       'export-project-as-wick-file': this.editor.exportProjectAsWickFile,
       'export-project-to-new-window': this.editor.exportProjectToNewWindow,
       'import-project-as-wick-file': (() => console.log("Ctrl-O as a shortcut doesn't work yet.")),
+      'import-image-sequence': this.editor.openImportAssetSequenceFileDialog,
       'create-clip-from-selection': (() => this.editor.createClipFromSelection("", false)),
       'break-apart-selection': (() => this.editor.breakApartSelection()),
       'export-selection': this.editor.exportSelectedClip,
