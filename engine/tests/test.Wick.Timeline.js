@@ -146,6 +146,47 @@ describe('Wick.Timeline', function() {
         });
     });
 
+
+    describe('#activeFrames cache', function () {
+        it('should reuse cached active frames until a layer version changes', function() {
+            var timeline = new Wick.Timeline();
+            timeline.addLayer(new Wick.Layer());
+            timeline.layers[0].addFrame(new Wick.Frame({start:1,end:5}));
+
+            timeline.playheadPosition = 1;
+            var first = timeline.activeFrames;
+            var second = timeline.activeFrames;
+            expect(first).to.equal(second);
+
+            timeline.layers[0].addFrame(new Wick.Frame({start:6,end:6}));
+            var third = timeline.activeFrames;
+            expect(third).to.not.equal(second);
+        });
+    });
+
+    describe('#playheadPosition no-op', function () {
+        it('should skip selection/tool reset and tween updates when unchanged', function() {
+            var project = new Wick.Project();
+            var timeline = project.focus.timeline;
+            var frame = timeline.activeFrame;
+
+            var clearCount = 0;
+            var resetCount = 0;
+            var tweenCount = 0;
+
+            project.selection.clear = function () { clearCount++; };
+            project.resetTools = function () { resetCount++; };
+            frame.applyTweenTransforms = function () { tweenCount++; };
+            frame.updateClipTimelinesForAnimationType = function () {};
+
+            timeline.playheadPosition = timeline.playheadPosition;
+
+            expect(clearCount).to.equal(0);
+            expect(resetCount).to.equal(0);
+            expect(tweenCount).to.equal(0);
+        });
+    });
+
     describe('#activeLayer', function () {
         it('should calculate active layer correctly', function() {
             var timeline = new Wick.Timeline();

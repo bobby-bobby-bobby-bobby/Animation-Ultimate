@@ -34,6 +34,14 @@ Wick.Timeline = class extends Wick.Base {
 
         this._fillGapsMethod = "auto_extend";
         this._frameForced = false;
+
+        this._activeFramesCache = {
+            playheadPosition: null,
+            layerVersionsKey: null,
+            frames: [],
+        };
+        this._activeFramesScratch = [];
+        this._changedFramesScratch = [];
     }
 
     _serialize(args) {
@@ -75,22 +83,28 @@ Wick.Timeline = class extends Wick.Base {
     }
 
     set playheadPosition(playheadPosition) {
-        // Automatically clear selection when any playhead in the project moves
-        if(this.project && this._playheadPosition !== playheadPosition && this.parentClip.isFocus) {
+        var nextPlayheadPosition = Math.max(1, playheadPosition);
+        var previousPlayheadPosition = this._playheadPosition;
+
+        if (previousPlayheadPosition === nextPlayheadPosition) {
+            return;
+        }
+
+        // Automatically clear selection when the focused timeline's playhead actually moves.
+        if(this.project && this.parentClip.isFocus) {
             this.project.selection.clear('Canvas');
             this.project.resetTools();
         }
 
-        this._playheadPosition = playheadPosition;
-        if (this._playheadPosition < 1) {
-            this._playheadPosition = 1;
-        }
+        this._playheadPosition = nextPlayheadPosition;
 
-        // Automatically apply tween transforms on child frames when playhead moves
-        this.activeFrames.forEach(frame => {
+        // Batch tween updates against changed frame set between old/new playhead positions.
+        var changedFrames = this._collectChangedFrames(previousPlayheadPosition, nextPlayheadPosition);
+        for (var i = 0; i < changedFrames.length; i++) {
+            var frame = changedFrames[i];
             frame.applyTweenTransforms();
             frame.updateClipTimelinesForAnimationType();
-        });
+        }
     }
 
     /**
@@ -150,14 +164,39 @@ Wick.Timeline = class extends Wick.Base {
      * @type {Wick.Frame[]}
      */
     get activeFrames() {
-        var frames = [];
-        this.layers.forEach(layer => {
-            var layerFrame = layer.activeFrame;
+        var playheadPosition = this._playheadPosition;
+        var layers = this.layers;
+        var layerVersionsKey = '';
+
+        for (var i = 0; i < layers.length; i++) {
+            layerVersionsKey += layers[i].frameVersion + '|';
+        }
+
+        if (this._activeFramesCache.playheadPosition === playheadPosition &&
+            this._activeFramesCache.layerVersionsKey === layerVersionsKey) {
+            return this._activeFramesCache.frames;
+        }
+
+        var frames = this._activeFramesScratch;
+        frames.length = 0;
+        for (var j = 0; j < layers.length; j++) {
+            var layerFrame = layers[j].getFrameAtPlayheadPosition(playheadPosition);
             if (layerFrame) {
                 frames.push(layerFrame);
             }
-        });
-        return frames;
+        }
+
+        this._activeFramesCache.playheadPosition = playheadPosition;
+        this._activeFramesCache.layerVersionsKey = layerVersionsKey;
+        this._activeFramesCache.frames = frames.slice(0);
+
+        return this._activeFramesCache.frames;
+    }
+
+    invalidateActiveFramesCache() {
+        this._activeFramesCache.playheadPosition = null;
+        this._activeFramesCache.layerVersionsKey = null;
+        this._activeFramesCache.frames.length = 0;
     }
 
     /*
@@ -223,6 +262,9 @@ Wick.Timeline = class extends Wick.Base {
     addFrame(frame) {
         if (frame.originalLayerIndex >= this.layers.length) return;
 
+        // Frame add/remove can change which frame is active at the playhead.
+        this.invalidateActiveFramesCache();
+
         if (frame.originalLayerIndex === -1) {
             this.activeLayer.addFrame(frame);
         } else {
@@ -235,6 +277,8 @@ Wick.Timeline = class extends Wick.Base {
      * @param {Wick.Layer} layer - The layer to add.
      */
     addLayer(layer) {
+        // Layer add/remove/reorder changes cache key composition.
+        this.invalidateActiveFramesCache();
         this.addChild(layer);
         if (!layer.name) {
             if (this.layers.length > 1) {
@@ -274,6 +318,8 @@ Wick.Timeline = class extends Wick.Base {
             this.activeLayerIndex--;
         }
 
+        // Layer add/remove/reorder changes cache key composition.
+        this.invalidateActiveFramesCache();
         this.removeChild(layer);
     }
 
@@ -289,6 +335,27 @@ Wick.Timeline = class extends Wick.Base {
         layers.splice(index, 0, layer);
 
         this._children = layers;
+        this.invalidateActiveFramesCache();
+    }
+
+    _collectChangedFrames(previousPlayheadPosition, nextPlayheadPosition) {
+        var changedFrames = this._changedFramesScratch;
+        changedFrames.length = 0;
+
+        var previousFrames = this.getFramesAtPlayheadPosition(previousPlayheadPosition);
+        var nextFrames = this.activeFrames;
+
+        var i;
+        for (i = 0; i < previousFrames.length; i++) {
+            changedFrames.push(previousFrames[i]);
+        }
+        for (i = 0; i < nextFrames.length; i++) {
+            if (changedFrames.indexOf(nextFrames[i]) === -1) {
+                changedFrames.push(nextFrames[i]);
+            }
+        }
+
+        return changedFrames;
     }
 
     /**
