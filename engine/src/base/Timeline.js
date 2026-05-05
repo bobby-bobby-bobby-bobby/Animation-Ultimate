@@ -86,6 +86,12 @@ Wick.Timeline = class extends Wick.Base {
             this._playheadPosition = 1;
         }
 
+        // Playhead moves change visible frame layers and overlays in the canvas project view.
+        if (this.project && this.project.view && this.parentClip.isFocus) {
+            this.project.view.invalidateFrameRender();
+            this.project.view.invalidateBackgroundRender();
+        }
+
         // Automatically apply tween transforms on child frames when playhead moves
         this.activeFrames.forEach(frame => {
             frame.applyTweenTransforms();
@@ -120,6 +126,12 @@ Wick.Timeline = class extends Wick.Base {
 
     set activeLayerIndex(activeLayerIndex) {
         this._activeLayerIndex = activeLayerIndex;
+
+        // Active layer changes can move edit focus and selection widget visibility in canvas view.
+        if (this.project && this.project.view && this.parentClip.isFocus) {
+            this.project.view.invalidateFrameRender();
+            this.project.view.invalidateSelectionRender();
+        }
     }
 
     /**
