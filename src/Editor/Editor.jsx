@@ -168,8 +168,11 @@ class Editor extends EditorCore {
     });
 
     // Wick file input
+    const importExtensions = window.Wick.FileAsset.getValidExtensions()
+      .concat(['.mp4', '.webm']);
+
     this.openAssetFileFromClient = window.createFileInput({
-      accept: window.Wick.FileAsset.getValidExtensions().join(', '),
+      accept: importExtensions.join(', '),
       onChange: this.handleAssetFileImport,
       multiple: true,
     });

@@ -1,4 +1,5 @@
 import * as fastgif from './fastgif.js';
+import ClipFromImages from './ClipFromImages';
 
 class GIFImport {
   static importGIFIntoProject (args) {
@@ -23,20 +24,25 @@ class GIFImport {
 
         var imageAssets = [];
         dataURLs.forEach(dataURL => {
-            var imageAsset = new window.Wick.ImageAsset({
-                filename: gifFile.name + '_' + dataURLs.indexOf(dataURL) + '.png',
-                src: dataURL,
-            });
-            project.addAsset(imageAsset);
-            imageAssets.push(imageAsset);
+          var imageAsset = new window.Wick.ImageAsset({
+            filename: gifFile.name + '_' + dataURLs.indexOf(dataURL) + '.png',
+            src: dataURL,
+          });
+          project.addAsset(imageAsset);
+          imageAssets.push(imageAsset);
         });
+
         project.loadAssets(() => {
-            window.Wick.GIFAsset.fromImages(imageAssets, project, gifAsset => {
-                gifAsset.name = gifFile.name;
-                gifAsset.filename = gifFile.name;
-                onFinish(gifAsset);
-            });
-        })
+          ClipFromImages.createClipAssetFromImages({
+            images: imageAssets,
+            project,
+            onFinish: gifAsset => {
+              gifAsset.name = gifFile.name;
+              gifAsset.filename = gifFile.name;
+              onFinish(gifAsset);
+            },
+          });
+        });
       });
     }
     a.readAsArrayBuffer(gifFile);

@@ -22,6 +22,7 @@ import queryString from 'query-string';
 import VideoExport from './export/VideoExport';
 import GIFExport from './export/GIFExport';
 import GIFImport from './import/GIFImport';
+import VideoImport from './import/VideoImport';
 import AudioExport from './export/AudioExport';
 
 class EditorCore extends Component {
@@ -927,10 +928,12 @@ class EditorCore extends Component {
     }
 
     // Add all successfully uploaded assets
-    for(var i = 0; i < acceptedFiles.length; i++) {
-      if(acceptedFiles[i].type === 'image/gif') {
+    for (let i = 0; i < acceptedFiles.length; i++) {
+      const acceptedFile = acceptedFiles[i];
+
+      if (acceptedFile.type === 'image/gif') {
         GIFImport.importGIFIntoProject({
-            gifFile: acceptedFiles[i],
+            gifFile: acceptedFile,
             project: this.project,
             onProgress: (percent) => {
                 console.log('GIFImport onProgress: ' + percent);
@@ -940,8 +943,49 @@ class EditorCore extends Component {
                 this.projectDidChange({ actionName: "Add Asset" });
                 if (options.create) this.createImageFromAsset(gifAsset.uuid, options.location.x || 0, options.location.y || 0);
             }});
+      } else if (VideoImport.isVideoFile(acceptedFile) && options.videoImportMode === 'frames') {
+        const videoImportTask = VideoImport.importVideoIntoProject({
+          videoFile: acceptedFile,
+          project: this.project,
+          targetFPS: options.videoTargetFPS,
+          onProgress: (percent, detail) => {
+            const progressPercent = Math.round(percent * 100);
+            this.updateToast(toastID, {
+              type: 'info',
+              text: `Importing ${acceptedFile.name}: ${progressPercent}%${detail ? ` (${detail})` : ''}`,
+            });
+          },
+          onWarning: (warningText) => {
+            this.toast(`${acceptedFile.name}: ${warningText}`, 'warning');
+          },
+          onCancel: () => {
+            this.updateToast(toastID, {
+              type: 'warning',
+              text: `Cancelled import for ${acceptedFile.name}`,
+            });
+          },
+          onFinish: (clipAsset) => {
+            this.project.addAsset(clipAsset);
+            this.projectDidChange({ actionName: "Add Asset" });
+            this.updateToast(toastID, {
+              type: 'success',
+              text: `Imported ${acceptedFile.name} as animated clip.`,
+            });
+            if (options.create) this.createImageFromAsset(clipAsset.uuid, options.location.x || 0, options.location.y || 0);
+          },
+          onError: () => {
+            this.updateToast(toastID, {
+              type: 'error',
+              text: `Could not import ${acceptedFile.name} as animation.`,
+            });
+          },
+        });
+
+        if (options.onVideoImportTask) {
+          options.onVideoImportTask(videoImportTask);
+        }
       } else {
-        var file = acceptedFiles[i];
+        var file = acceptedFile;
 
         this.importFileAsAsset(file, createCallback);
       }
