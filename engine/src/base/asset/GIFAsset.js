@@ -40,7 +40,13 @@ Wick.GIFAsset = class extends Wick.ClipAsset {
      * @param {Wick.ImageAsset} images - The ImageAssets, in order of where they will appear in the timeline, which are used to create a ClipAsset
      * @param {function} callback - Fuction to be called when the asset is done being created
      */
-    static fromImages (images, project, callback) {
+    static fromImages (images, project, callback, options) {
+        if (!options) options = {};
+
+        var fps = options.fps || project.framerate || 12;
+        var frameLength = Math.max(1, Math.round((project.framerate || fps) / fps));
+        var onProgress = options.onProgress;
+
         var clip = new Wick.Clip();
         clip.activeFrame.remove();
 
@@ -48,9 +54,17 @@ Wick.GIFAsset = class extends Wick.ClipAsset {
         var processNextImage = () => {
             images[imagesCreatedCount].createInstance(imagePath => {
                 // Create a frame for every image
-                var frame = new Wick.Frame({start: imagesCreatedCount+1});
+                var frameStart = (imagesCreatedCount * frameLength) + 1;
+                var frame = new Wick.Frame({
+                    start: frameStart,
+                    end: frameStart + frameLength - 1,
+                });
                 frame.addPath(imagePath);
                 clip.activeLayer.addFrame(frame);
+
+                if (onProgress) {
+                    onProgress(((imagesCreatedCount + 1) / images.length) * 100);
+                }
 
                 // Check if all images have been created
                 imagesCreatedCount++;
@@ -79,15 +93,19 @@ Wick.GIFAsset = class extends Wick.ClipAsset {
      */
     constructor (args) {
         super(args);
+
+        this.sequenceImportMeta = null;
     }
 
     _serialize (args) {
         var data = super._serialize(args);
+        data.sequenceImportMeta = this.sequenceImportMeta;
         return data;
     }
 
     _deserialize (data) {
         super._deserialize(data);
+        this.sequenceImportMeta = data.sequenceImportMeta || null;
     }
 
     get classname () {

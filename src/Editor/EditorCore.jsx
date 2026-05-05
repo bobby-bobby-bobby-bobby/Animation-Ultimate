@@ -22,6 +22,7 @@ import queryString from 'query-string';
 import VideoExport from './export/VideoExport';
 import GIFExport from './export/GIFExport';
 import GIFImport from './import/GIFImport';
+import ImageSequenceImport from './import/ImageSequenceImport';
 import AudioExport from './export/AudioExport';
 
 class EditorCore extends Component {
@@ -926,14 +927,68 @@ class EditorCore extends Component {
       if (options.create) this.createImageFromAsset(asset.uuid, options.location.x || 0, options.location.y || 0);
     }
 
+    let imageSequenceGroups = ImageSequenceImport.detectSequenceGroups([...(acceptedFiles || []), ...((options && options.zipExtractionResults) || [])], 2);
+    let sequenceFilesSet = new Set();
+    imageSequenceGroups.forEach(group => {
+      group.files.forEach(file => sequenceFilesSet.add(file));
+    });
+
+    if (imageSequenceGroups.length > 0) {
+      let defaultFPS = this.project.framerate || 12;
+      if (defaultFPS < 12 || defaultFPS > 24) defaultFPS = 12;
+
+      let promptedFPS = Number(window.prompt('Import image sequence FPS (12-24 recommended):', defaultFPS));
+      if (!Number.isFinite(promptedFPS) || promptedFPS <= 0) {
+        promptedFPS = defaultFPS;
+      }
+
+      ImageSequenceImport.importImageSequenceIntoProject({
+        files: acceptedFiles,
+        extractedFiles: options.zipExtractionResults,
+        project: this.project,
+        fps: promptedFPS,
+        onProgress: (message, progress) => {
+          this.updateToast(toastID, {
+            type: 'info',
+            text: `${message} (${Math.round(progress)}%)`,
+          });
+        },
+        onError: (message) => {
+          this.updateToast(toastID, {
+            type: 'error',
+            text: message,
+          });
+        },
+        onFinish: (sequenceAssets) => {
+          sequenceAssets.forEach(asset => {
+            this.project.addAsset(asset);
+            this.projectDidChange({ actionName: 'Add Image Sequence Asset' });
+            createCallback(asset);
+          });
+
+          this.updateToast(toastID, {
+            type: 'success',
+            text: `Imported ${sequenceAssets.length} image sequence clip(s).`,
+          });
+        }
+      });
+    }
+
     // Add all successfully uploaded assets
     for(var i = 0; i < acceptedFiles.length; i++) {
+      if (sequenceFilesSet.has(acceptedFiles[i])) {
+        continue;
+      }
+
       if(acceptedFiles[i].type === 'image/gif') {
         GIFImport.importGIFIntoProject({
             gifFile: acceptedFiles[i],
             project: this.project,
             onProgress: (percent) => {
-                console.log('GIFImport onProgress: ' + percent);
+                this.updateToast(toastID, {
+                  type: 'info',
+                  text: `Importing GIF ${acceptedFiles[i].name} (${Math.round(percent)}%)`,
+                });
             },
             onFinish: (gifAsset) => {
                 this.project.addAsset(gifAsset);
