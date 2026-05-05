@@ -51,6 +51,10 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
         this._attachedDocumentEvents = [];
         this._attachedCanvasEvents = [];
 
+        this._drawRequest = null;
+        this._dirtySections = new Set();
+        this._lastTooltipRect = null;
+
     }
 
     /**
@@ -193,29 +197,172 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
      * Draw this GUIElement and update the mouse state
      */
     draw () {
-        var ctx = this.ctx;
+        if(this._drawRequest) {
+            cancelAnimationFrame(this._drawRequest);
+            this._drawRequest = null;
+            this._dirtySections.clear();
+        }
 
-        // Make sure canvas is the correct size
         this.resize();
 
-        // Reset drawn objects list
         this._drawnElements = [];
+        this._drawTimelineRegion({
+            x: 0,
+            y: 0,
+            width: this.canvas.width,
+            height: this.canvas.height,
+        });
+        this._drawTooltips();
+        this._lastTooltipRect = this._calculateTooltipRect();
+    }
 
-        // Draw the entire GUI
-        ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    requestDraw (...sections) {
+        sections.forEach(section => {
+            if(section) {
+                this._dirtySections.add(section);
+            }
+        });
+
+        if(this._drawRequest) return;
+
+        this._drawRequest = requestAnimationFrame(() => {
+            this._drawRequest = null;
+
+            var dirtySections = [...this._dirtySections];
+            this._dirtySections.clear();
+
+            if(dirtySections.length === 0) {
+                this.draw();
+                return;
+            }
+
+            var hasMainSection = dirtySections.some(section => {
+                return section === 'numberLine' || section === 'frameGrid';
+            });
+
+            if(hasMainSection) {
+                this.draw();
+                return;
+            }
+
+            if(dirtySections.length === 1 && dirtySections[0] === 'tooltips') {
+                this._redrawTooltipsRegion();
+                return;
+            }
+
+            this.draw();
+        });
+    }
+
+    _drawTimelineRegion (rect) {
+        var ctx = this.ctx;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.x, rect.y, rect.width, rect.height);
+        ctx.clip();
+        ctx.clearRect(rect.x, rect.y, rect.width, rect.height);
+
         this.model.activeTimeline.guiElement.draw();
 
-        // Draw current popup menu
         if(this._popupMenu) {
             this._popupMenu.draw();
         }
+        ctx.restore();
+    }
 
-        // Draw tooltips
+    _drawTooltips () {
         this._mouseHoverTargets.forEach(target => {
             if(target.tooltip) {
                 target.tooltip.draw(target.localTranslation.x, target.localTranslation.y);
             }
         });
+    }
+
+    _calculateTooltipRect () {
+        var rect = null;
+        var ctx = this.ctx;
+
+        ctx.save();
+        ctx.font = '14px Nunito Sans';
+
+        this._mouseHoverTargets.forEach(target => {
+            if(!target.tooltip || !target.tooltip.label) return;
+
+            var textWidth = ctx.measureText(target.tooltip.label).width;
+            var textHeight = 14;
+            var tx = target.localTranslation.x - textWidth / 2;
+            var ty = target.localTranslation.y + textHeight;
+
+            var xMin = 3;
+            if(tx < xMin) tx = xMin;
+            if(ty > this.canvas.height) {
+                ty = this.canvas.height - TOOLTIP_BOTTOM_OFFSET_LARGE;
+            } else if (ty > this.canvas.height - TOOLTIP_BOTTOM_OFFSET_SMALL) {
+                ty = this.canvas.height - TOOLTIP_BOTTOM_OFFSET_MEDIUM;
+            }
+
+            var margin = 4;
+            var tooltipRect = {
+                x: tx - margin / 2,
+                y: ty - margin / 2,
+                width: textWidth + margin,
+                height: textHeight + margin,
+            };
+
+            if(!rect) {
+                rect = tooltipRect;
+                return;
+            }
+
+            var minX = Math.min(rect.x, tooltipRect.x);
+            var minY = Math.min(rect.y, tooltipRect.y);
+            var maxX = Math.max(rect.x + rect.width, tooltipRect.x + tooltipRect.width);
+            var maxY = Math.max(rect.y + rect.height, tooltipRect.y + tooltipRect.height);
+
+            rect = {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+            };
+        });
+
+        ctx.restore();
+        return rect;
+    }
+
+    _redrawTooltipsRegion () {
+        var oldRect = this._lastTooltipRect;
+        var nextRect = this._calculateTooltipRect();
+
+        if(!oldRect && !nextRect) {
+            return;
+        }
+
+        var redrawRect = oldRect;
+        if(oldRect && nextRect) {
+            var minX = Math.min(oldRect.x, nextRect.x);
+            var minY = Math.min(oldRect.y, nextRect.y);
+            var maxX = Math.max(oldRect.x + oldRect.width, nextRect.x + nextRect.width);
+            var maxY = Math.max(oldRect.y + oldRect.height, nextRect.y + nextRect.height);
+            redrawRect = {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+            };
+        } else if(nextRect) {
+            redrawRect = nextRect;
+        }
+
+        var drawnElements = this._drawnElements;
+        this._drawnElements = [];
+        this._drawTimelineRegion(redrawRect);
+        this._drawnElements = drawnElements;
+
+        this._drawTooltips();
+        this._lastTooltipRect = nextRect;
     }
 
     /**
@@ -390,7 +537,8 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
         if(e.buttons === 0 && !this.canvasClicked && mouseOffCanvas) {
             if(this._mouseHoverTargets.length > 0) {
                 this._mouseHoverTargets = [];
-                this.draw();
+                // Mouse left the canvas: clear hover targets and fully redraw to remove any hover visuals.
+                this.requestDraw();
             }
             return;
         }
@@ -420,7 +568,7 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
             }
         }
 
-        this.draw();
+        this.requestDraw();
     }
 
     _timeline_onMouseDown (e) {
@@ -484,7 +632,7 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
             var dy = e.deltaY * e.deltaFactor * 0.5;
             this.scrollX += dx;
             this.scrollY -= dy;
-            this.draw();
+            this.requestDraw('numberLine', 'frameGrid');
         }
     }
 
@@ -524,7 +672,7 @@ Wick.GUIElement.Project = class extends Wick.GUIElement {
                 }
             }
 
-            this.draw();
+            this.requestDraw('numberLine', 'frameGrid');
         }, 16);
     }
 
